@@ -34,7 +34,7 @@ bool PipelineParser::parse(const char* text, Pipeline& out) {
   out.count = 0;
 
   // Копируем текст в рабочий буфер (strtok модифицирует)
-  static char buf[4096];
+  static char buf[8192];
   strncpy(buf, text, sizeof(buf) - 1);
   buf[sizeof(buf) - 1] = '\0';
 
@@ -43,7 +43,7 @@ bool PipelineParser::parse(const char* text, Pipeline& out) {
   char* line = strtok_r(buf, "\r\n", &saveptr);
   while (line) {
     lineNo++;
-    char work[128];
+    char work[LINE_LEN+1];
     strncpy(work, line, sizeof(work) - 1);
     work[sizeof(work) - 1] = '\0';
     char* t = trim(work);
@@ -58,7 +58,9 @@ bool PipelineParser::parse(const char* text, Pipeline& out) {
     st.lineNo = lineNo;
 
     // print ?
-    if (strncmp(t, "print", 5) == 0 && (t[5] == ' ' || t[5] == '\t' || t[5] == '\0')) {
+    // print + (' ' | '\t' | '\0' | '"' для print"x" без пробела)
+    if (strncmp(t, "print", 5) == 0 &&
+        (t[5] == ' ' || t[5] == '\t' || t[5] == '\0' || t[5] == '"')) {
       char* rest = trim(t + 5);
       if (*rest == '"') {
         // print "text" — литерал

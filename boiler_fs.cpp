@@ -5,6 +5,21 @@
 #include <LittleFS.h>
 #include <string.h>
 
+// Нормализовать имя файла в путь LittleFS: "/<name>" без повторов '/'.
+// Раньше 4 из 5 методов слепо prepending '/', что ломало вызовы с ведущим '/'
+// (получалось "//name"). Теперь все методы используют один хелпер.
+static void makePath(const char* name, char* out, size_t n) {
+  if (!name || !*name) { if (n) out[0] = '\0'; return; }
+  size_t i = 0;
+  if (name[0] != '/' && i + 1 < n) out[i++] = '/';
+  for (size_t k = 0; name[k] && i + 1 < n; k++) {
+    // не допускаем "//" в середине
+    if (name[k] == '/' && i > 0 && out[i - 1] == '/') continue;
+    out[i++] = name[k];
+  }
+  out[i] = '\0';
+}
+
 bool BoilerFS::init() {
   // true = format при неудаче begin (первый запуск / повреждена FS)
   return LittleFS.begin(true);
@@ -32,27 +47,19 @@ int BoilerFS::listFiles(FileList& out) {
 bool BoilerFS::exists(const char* name) {
   if (!name || !*name) return false;
   char path[32];
-  if (name[0] == '/') {
-    strncpy(path, name, sizeof(path) - 1);
-  } else {
-    path[0] = '/';
-    strncpy(path + 1, name, sizeof(path) - 2);
-  }
-  path[sizeof(path) - 1] = '\0';
+  makePath(name, path, sizeof(path));
   return LittleFS.exists(path);
 }
 
 int BoilerFS::readFile(const char* name, char* buf, int maxlen) {
   if (!name || !*name || !buf || maxlen <= 0) return -1;
   char path[32];
-  path[0] = '/';
-  strncpy(path + 1, name, sizeof(path) - 2);
-  path[sizeof(path) - 1] = '\0';
+  makePath(name, path, sizeof(path));
 
   File f = LittleFS.open(path, "r");
   if (!f) return -1;
   int sz = f.size();
-  if (sz >= maxlen) { f.close(); return -1; }
+  if (sz >= maxlen) { f.close(); return -2; }   // -2 = слишком большой (≠ -1 "не найден")
   int n = f.readBytes(buf, sz);
   buf[n] = '\0';
   f.close();
@@ -62,9 +69,7 @@ int BoilerFS::readFile(const char* name, char* buf, int maxlen) {
 bool BoilerFS::writeFile(const char* name, const char* text) {
   if (!name || !*name || !text) return false;
   char path[32];
-  path[0] = '/';
-  strncpy(path + 1, name, sizeof(path) - 2);
-  path[sizeof(path) - 1] = '\0';
+  makePath(name, path, sizeof(path));
 
   File f = LittleFS.open(path, "w");
   if (!f) return false;
@@ -77,18 +82,14 @@ bool BoilerFS::writeFile(const char* name, const char* text) {
 bool BoilerFS::deleteFile(const char* name) {
   if (!name || !*name) return false;
   char path[32];
-  path[0] = '/';
-  strncpy(path + 1, name, sizeof(path) - 2);
-  path[sizeof(path) - 1] = '\0';
+  makePath(name, path, sizeof(path));
   return LittleFS.remove(path);
 }
 
 int BoilerFS::fileSize(const char* name) {
   if (!name || !*name) return -1;
   char path[32];
-  path[0] = '/';
-  strncpy(path + 1, name, sizeof(path) - 2);
-  path[sizeof(path) - 1] = '\0';
+  makePath(name, path, sizeof(path));
   File f = LittleFS.open(path, "r");
   if (!f) return -1;
   int sz = f.size();

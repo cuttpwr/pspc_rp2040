@@ -6,6 +6,17 @@
 #include <string.h>
 #include <ctype.h>
 
+//--- float-сравнение с относительным допуском ---
+// Используется для == и != в выражениях: абсолютного 1e-9 не хватает,
+// т.к. 0.1+0.2 в float == 0.3000000119, разница с 0.3 = 7.45e-9 > 1e-9.
+// Здесь: считаем равными, если абсолютная разница очень мала ИЛИ
+// если относительная разница (к большей по модулю) очень мала.
+static bool floatEq(float a, float b) {
+  float d = fabsf(a - b);
+  float s = fmaxf(fabsf(a), fabsf(b));
+  return d < 1e-6f || d < s * 1e-6f;
+}
+
 //--- VarTable ---
 bool VarTable::set(const char* name, float val) {
   if (!name || !name[0]) return false;
@@ -79,8 +90,12 @@ float ExprEval::parseIdent() {
     name[n++] = *_p++;
   }
   name[n] = '\0';
-  // пропустить остаток имени, если слишком длинное (ошибка)
-  while (isalnum((unsigned char)*_p) || *_p == '_') _p++;
+  // если имя длиннее NAME_LEN — это ошибка, а не тихая обрезка.
+  // Иначе VarTable::get(обрезанное_имя) вернул бы false → "неизвестная переменная",
+  // вводя в заблуждение (кажется, что переменной нет, а она есть под полным именем).
+  bool tooLong = false;
+  while (isalnum((unsigned char)*_p) || *_p == '_') { tooLong = true; _p++; }
+  if (tooLong) { _err = "имя длиннее 16 символов"; return 0; }
 
   skipSpaces();
   // вызов функции?
@@ -180,8 +195,8 @@ float ExprEval::parseCompare() {
   if (_err) return 0;
   skipSpaces();
   // двухсимвольные операторы сначала
-  if (peekStr("==")) { _p += 2; float b = parseAddSub(); if (_err) return 0; return fabsf(a - b) < 1e-9f ? 1 : 0; }
-  if (peekStr("!=")) { _p += 2; float b = parseAddSub(); if (_err) return 0; return fabsf(a - b) >= 1e-9f ? 1 : 0; }
+  if (peekStr("==")) { _p += 2; float b = parseAddSub(); if (_err) return 0; return floatEq(a, b) ? 1 : 0; }
+  if (peekStr("!=")) { _p += 2; float b = parseAddSub(); if (_err) return 0; return !floatEq(a, b) ? 1 : 0; }
   if (peekStr("<=")) { _p += 2; float b = parseAddSub(); if (_err) return 0; return a <= b ? 1 : 0; }
   if (peekStr(">=")) { _p += 2; float b = parseAddSub(); if (_err) return 0; return a >= b ? 1 : 0; }
   if (peekStr("<"))  { _p += 1; float b = parseAddSub(); if (_err) return 0; return a < b ? 1 : 0; }

@@ -41,9 +41,6 @@ public:
   // строка по индексу (0-индексация) — для дисплея
   const char* lineAt(int i) const;
 
-  // для дисплея: последняя введённая строка (для отображения в EDIT-экране)
-  const char* lastInput() const { return _lastInput; }
-
   static const int MAX_LINES = 80;
   static const int LINE_LEN  = 96;
 
@@ -55,7 +52,6 @@ private:
   char   _lines[MAX_LINES][LINE_LEN + 1];
   int    _count = 0;
   bool   _dirty = false;
-  char   _lastInput[LINE_LEN + 1];
 
   void doSave();
   void doList();

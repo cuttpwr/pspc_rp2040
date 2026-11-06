@@ -8,7 +8,6 @@
 
 Editor::Editor(BoilerFS& fs, Print& out) : _fs(fs), _out(out) {
   _name[0] = '\0';
-  _lastInput[0] = '\0';
 }
 
 bool Editor::enter(const char* name, bool isNew) {
@@ -17,7 +16,6 @@ bool Editor::enter(const char* name, bool isNew) {
   _name[sizeof(_name) - 1] = '\0';
   _count = 0;
   _dirty = false;
-  _lastInput[0] = '\0';
 
   if (!isNew) {
     // загрузить существующий файл
@@ -28,14 +26,22 @@ bool Editor::enter(const char* name, bool isNew) {
       return false;
     }
     buf[n] = '\0';
-    // разбить на строки
-    char* saveptr = nullptr;
-    char* line = strtok_r(buf, "\r\n", &saveptr);
-    while (line && _count < MAX_LINES) {
-      strncpy(_lines[_count], line, LINE_LEN);
-      _lines[_count][LINE_LEN] = '\0';
+    // разбить на строки вручную, сохраняя пустые (strtok_r их схлопывал).
+    const char* p = buf;
+    while (*p && _count < MAX_LINES) {
+      // найти конец строки
+      const char* e = strchr(p, '\n');
+      if (!e) e = p + strlen(p);                 // последняя строка без \n
+      size_t len = e - p;
+      // срезать \r, если есть (Windows-стиль \r\n)
+      if (len > 0 && p[len - 1] == '\r') len--;
+      // ограничить по LINE_LEN
+      if (len > LINE_LEN) len = LINE_LEN;
+      memcpy(_lines[_count], p, len);
+      _lines[_count][len] = '\0';
       _count++;
-      line = strtok_r(nullptr, "\r\n", &saveptr);
+      // перейти к следующей строке (если e указывает на \0 — конец файла)
+      p = (*e) ? e + 1 : e;
     }
   }
 
@@ -60,9 +66,6 @@ const char* Editor::lineAt(int i) const {
 
 bool Editor::handleLine(const char* line) {
   if (!_active) return false;
-  // запомнить для дисплея
-  strncpy(_lastInput, line ? line : "", LINE_LEN);
-  _lastInput[LINE_LEN] = '\0';
 
   // команды начинаются с '.'
   if (line && line[0] == '.') {
@@ -135,14 +138,21 @@ void Editor::doSave() {
   // собрать текст из строк
   static char buf[8192];
   int pos = 0;
+  int saved = 0;
   for (int i = 0; i < _count; i++) {
     int len = strlen(_lines[i]);
     if (pos + len + 1 >= (int)sizeof(buf) - 1) break;
     memcpy(buf + pos, _lines[i], len);
     pos += len;
     buf[pos++] = '\n';
+    saved++;
   }
   buf[pos] = '\0';
+  if (saved < _count) {
+    _out.print(F("ВНИМАНИЕ: сохранено только ")); _out.print(saved);
+    _out.print(F(" из ")); _out.print(_count);
+    _out.println(F(" строк (буфер 8192 переполнен)"));
+  }
   if (_fs.writeFile(_name, buf)) {
     _out.print(F("Сохранено: ")); _out.print(_name);
     _out.print(F(" (")); _out.print(_count); _out.println(F(" строк)"));

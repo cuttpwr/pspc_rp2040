@@ -50,13 +50,16 @@ public:
   // редактор активен → автопереключение на EDIT экран
   void notifyEditorActive(bool active);
 
+  // обновить кэш списка файлов (после DEL/NEW из шелла).
+  // Вызывается Shell'ом — поэтому public.
+  void refreshFileList();
+
 private:
   void drawHome();
   void drawEdit();
   void drawRun();
   void drawTerminal();
   void cycleScreen();
-  void refreshFileList();
 
   BoilerTTY* _tty = nullptr;
   Shell*     _shell = nullptr;
@@ -68,6 +71,7 @@ private:
   int    _selFile = 0;
   int    _runPage = 0;
   int    _lastLineCount = -1;
+  Screen _prevScreen = SCR_HOME;   // экран до входа в EDIT — туда вернёмся при выходе
 
   // кэш списка файлов
   static const int MAX_F = 16;

@@ -74,6 +74,11 @@ void BoilerTTY::pushLine(const char* s) {
   if (_count < MAX_LINES) _count++;
 }
 
+void BoilerTTY::dropCurrentLine() {
+  _curLen = 0;
+  _curLine[0] = '\0';
+}
+
 int BoilerTTY::lineCount() const {
   return _count;
 }
@@ -98,4 +103,5 @@ void BoilerTTY::clear() {
   _count = 0;
   _curLen = 0;
   _curLine[0] = '\0';
+  _inputLine[0] = '\0';   // иначе после SCREEN clear ввод оставался на OLED
 }

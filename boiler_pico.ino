@@ -48,7 +48,9 @@ void setup() {
   delay(50);
 
   tty.begin();
-  fs.init();
+  if (!fs.init()) {
+    tty.println(F("FS init FAILED — pipeline-файлы не будут работать"));
+  }
   keyboard.begin();
 
   // editor и shell создаются после fs/tty (нужны ссылки)
@@ -104,9 +106,11 @@ void loop() {
       String cmd = F("RUN "); cmd += fn;
       shell->process(cmd.c_str());
       disp.setScreen(BoilerDisplay::SCR_RUN);
+      tty.dropCurrentLine();
       tty.print(F("> "));
     } else {
       tty.println(F("[BTN: нет файла для RUN]"));
+      tty.dropCurrentLine();
       tty.print(F("> "));
     }
   }
@@ -117,6 +121,7 @@ void loop() {
       tty.print(F("[BTN: EDIT ")); tty.print(fn); tty.println(F("]"));
       String cmd = F("EDIT "); cmd += fn;
       shell->process(cmd.c_str());
+      tty.dropCurrentLine();
       tty.print(F("> "));
     }
   }
@@ -159,6 +164,7 @@ static void updateKbMode() {
       tty.println(F("[Keyboard unmounted]"));
       disp.setScreen(BoilerDisplay::SCR_HOME);
     }
+    tty.dropCurrentLine();
     tty.print(F("> "));
   }
 }
@@ -177,6 +183,7 @@ static void handleInputChar(char c, bool fromKeyboard) {
       inputBuf = String();
       tty.setInputLine("");
       disp.markDirty();
+      tty.dropCurrentLine();
       tty.print(F("> "));
       return;
     }
@@ -185,6 +192,7 @@ static void handleInputChar(char c, bool fromKeyboard) {
     inputBuf = String();
     tty.setInputLine("");
     disp.markDirty();
+    tty.dropCurrentLine();
     tty.print(F("> "));
     return;
   }
@@ -198,7 +206,9 @@ static void handleInputChar(char c, bool fromKeyboard) {
     }
     return;
   }
-  if (inputBuf.length() < 120) {
+  // Лимит ввода = Editor::LINE_LEN (96). Раньше был 120, что больше
+  // LINE_LEN — лишние символы всё равно обрезались в setInputLine/Editor.
+  if (inputBuf.length() < Editor::LINE_LEN) {
     inputBuf += c;
     tty.setInputLine(inputBuf.c_str());
     disp.markDirty();

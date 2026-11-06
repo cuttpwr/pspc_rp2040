@@ -38,6 +38,19 @@ static bool eqi(const char* a, const char* b) {
   return a && b && strcasecmp(a, b) == 0;
 }
 
+// Валидация имени файла для LittleFS: только буквы/цифры/_/-, до 23 символов.
+// Защищает от "..", "/", "\\0", слишком длинных имён.
+static bool validFileName(const char* s) {
+  if (!s || !*s) return false;
+  size_t len = strlen(s);
+  if (len > 23) return false;
+  for (const char* p = s; *p; p++) {
+    unsigned char c = (unsigned char)*p;
+    if (!(isalnum(c) || c == '_' || c == '-')) return false;
+  }
+  return true;
+}
+
 void Shell::process(const char* line) {
   if (!line) return;
   // редактор перехватывает весь ввод
@@ -85,6 +98,10 @@ void Shell::cmdLs() {
 
 void Shell::cmdNew(const char* name) {
   if (!name || !*name) { _out.println(F("Usage: NEW <name>")); return; }
+  if (!validFileName(name)) {
+    _out.println(F("Неверное имя: только A-Z a-z 0-9 _ -, до 23 символов"));
+    return;
+  }
   if (_fs.exists(name)) {
     _out.print(F("Файл уже существует: ")); _out.println(name);
     _out.println(F("Используйте EDIT для редактирования."));
@@ -95,6 +112,10 @@ void Shell::cmdNew(const char* name) {
 
 void Shell::cmdEdit(const char* name) {
   if (!name || !*name) { _out.println(F("Usage: EDIT <name>")); return; }
+  if (!validFileName(name)) {
+    _out.println(F("Неверное имя: только A-Z a-z 0-9 _ -, до 23 символов"));
+    return;
+  }
   if (!_fs.exists(name)) {
     _out.print(F("Файл не найден: ")); _out.println(name);
     _out.println(F("Используйте NEW для создания."));
@@ -105,10 +126,20 @@ void Shell::cmdEdit(const char* name) {
 
 void Shell::cmdRun(const char* name) {
   if (!name || !*name) { _out.println(F("Usage: RUN <name>")); return; }
+  // Сбрасываем результаты прошлых прогонов — иначе при ошибке RUN
+  // (нет файла / ошибка парсера) экран RUN продолжал бы показывать
+  // устаревшие значения (баг "stale results").
+  _hasResults = false;
+  _runner.clearResults();
   static char buf[8192];
   int n = _fs.readFile(name, buf, sizeof(buf) - 1);
-  if (n < 0) {
+  if (n == -1) {
     _out.print(F("Файл не найден: ")); _out.println(name);
+    return;
+  }
+  if (n == -2) {
+    _out.print(F("Файл слишком большой (max ")); _out.print((int)sizeof(buf) - 1);
+    _out.println(F(" байт)")); _out.println(name);
     return;
   }
   buf[n] = '\0';
@@ -119,7 +150,6 @@ void Shell::cmdRun(const char* name) {
     return;
   }
   _vars.clear();
-  _runner.clearResults();
   bool ok = _runner.run(_parsed, _vars);
   _hasResults = true;
   if (ok) {
@@ -132,14 +162,22 @@ void Shell::cmdRun(const char* name) {
     _out.print(F(": ")); _out.println(_runner.err());
     _out.println(F("=== ==="));
   }
+  // Если сидим на экране RUN — заставляем его перерисоваться
+  // с новыми результатами (или с "No results", если был fail).
+  if (_disp) _disp->markDirty();
 }
 
 void Shell::cmdCat(const char* name) {
   if (!name || !*name) { _out.println(F("Usage: CAT <name>")); return; }
   static char buf[8192];
   int n = _fs.readFile(name, buf, sizeof(buf) - 1);
-  if (n < 0) {
+  if (n == -1) {
     _out.print(F("Файл не найден: ")); _out.println(name);
+    return;
+  }
+  if (n == -2) {
+    _out.print(F("Файл слишком большой для CAT (max ")); _out.print((int)sizeof(buf) - 1);
+    _out.println(F(" байт)")); _out.println(name);
     return;
   }
   buf[n] = '\0';
@@ -153,6 +191,11 @@ void Shell::cmdDel(const char* name) {
   if (!name || !*name) { _out.println(F("Usage: DEL <name>")); return; }
   if (_fs.deleteFile(name)) {
     _out.print(F("Удалён: ")); _out.println(name);
+    // HOME хранит кэш списка файлов — обновляем и перерисовываем.
+    if (_disp) {
+      _disp->refreshFileList();
+      _disp->markDirty();
+    }
   } else {
     _out.print(F("Не удалось удалить: ")); _out.println(name);
   }

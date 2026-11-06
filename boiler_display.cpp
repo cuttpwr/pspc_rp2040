@@ -20,7 +20,8 @@
 #define BTN_PREV 14
 #define BTN_DEC  13
 #define BTN_INC  12
-#define ROWS 7
+#define ROWS 6          // HOME: 6 строк + футер y=56 (7-я налезала бы на футер)
+#define ROWS_RUN 7      // RUN: 7 строк, футера нет
 
 static Adafruit_SSD1306 oled(OLED_W, OLED_H, &Wire, OLED_RESET);
 
@@ -45,8 +46,9 @@ static void translit(const char* in, char* out, size_t maxOut) {
       char c = '?';
       if (b == 0xD0 && b2 >= 0x90 && b2 <= 0xBF) c = D0_MAP[b2 - 0x90];
       else if (b == 0xD1 && b2 >= 0x80 && b2 <= 0x8F) c = D1_MAP[b2 - 0x80];
-      else if (b == 0xD1 && b2 == 0x91) c = 'e';
-      else if (b == 0xC2 && b2 == 0xB0) c = ' ';
+      else if (b == 0xD0 && b2 == 0x81) c = 'E';   // Ё (uppercase) — выпадало из D0_MAP
+      else if (b == 0xD1 && b2 == 0x91) c = 'e';    // ё (lowercase)
+      else if (b == 0xC2 && b2 == 0xB0) c = 'o';    // ° → 'o' (был пробел — терялся)
       else if (b == 0xC2 && b2 == 0xAB) c = '<';
       else if (b == 0xC2 && b2 == 0xBB) c = '>';
       out[oi++] = c; ii += 2; continue;
@@ -122,8 +124,15 @@ void BoilerDisplay::cycleScreen() {
 }
 
 void BoilerDisplay::notifyEditorActive(bool active) {
-  if (active && _screen != SCR_EDIT) { _screen = SCR_EDIT; _dirty = true; }
-  else if (!active && _screen == SCR_EDIT) { _screen = SCR_HOME; _listDirty = true; _dirty = true; }
+  if (active && _screen != SCR_EDIT) {
+    _prevScreen = _screen;          // запомнили, откуда пришли
+    _screen = SCR_EDIT; _dirty = true;
+  }
+  else if (!active && _screen == SCR_EDIT) {
+    _screen = _prevScreen;          // возвращаемся туда, откуда вошли (а не всегда HOME)
+    if (_screen == SCR_HOME) _listDirty = true;
+    _dirty = true;
+  }
 }
 
 //============================================================================
@@ -299,7 +308,7 @@ void BoilerDisplay::drawRun() {
 
   const PipelineRunner& r = _shell->runner();
   int total = r.resultCount();
-  int pages = (total + ROWS - 1) / ROWS;
+  int pages = (total + ROWS_RUN - 1) / ROWS_RUN;
   if (pages == 0) pages = 1;
   if (_runPage >= pages) _runPage = pages - 1;
   if (_runPage < 0) _runPage = 0;
@@ -307,9 +316,9 @@ void BoilerDisplay::drawRun() {
   oled.setCursor(90, 0);
   oled.print(_runPage + 1); oled.print(F("/")); oled.print(pages);
 
-  int start = _runPage * ROWS;
-  int y = 10;
-  for (int i = 0; i < ROWS && start + i < total; i++) {
+  int start = _runPage * ROWS_RUN;
+  int y = 8;
+  for (int i = 0; i < ROWS_RUN && start + i < total; i++) {
     const ResultRow& row = r.result(start + i);
     if (row.isNote) {
       oled.setCursor(0, y);
